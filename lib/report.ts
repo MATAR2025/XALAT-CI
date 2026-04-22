@@ -15,3 +15,17 @@ export async function insertReport({ category, lat, lng, user_id, image_url }: {
   if (error) throw error;
   return data;
 }
+
+export async function getUserData(userId: string) {
+  const { data, error } = await supabase.from('users').select('name, neighborhood, points').eq('id', userId).single();
+  if (error) throw error;
+  return data;
+}
+
+export async function saveSenBotChat({ user_id, question, response }: { user_id: string, question: string, response: string }) {
+  const { data, error } = await supabase.from('senbot_chats').insert([
+    { user_id, question, response }
+  ]);
+  if (error) throw error;
+  return data;
+}

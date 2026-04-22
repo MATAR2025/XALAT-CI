@@ -1,13 +1,12 @@
 "use client"
 
-import { useState, useRef } from "react"
-import { uploadReportImage, insertReport } from "../lib/report"
+import { useState, useRef, useEffect } from "react"
+import { uploadReportImage, insertReport, getUserData, saveSenBotChat } from "../lib/report"
 import { toast } from "../hooks/use-toast"
-import {
-  Bell,
-  User,
-  Camera,
-  MapPin,
+import { GoogleGenerativeAI } from "@google/generative-ai"
+
+const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!)
+
   CheckCircle,
   Megaphone,
   Star,
@@ -34,9 +33,16 @@ export default function DashboardPage() {
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [userData, setUserData] = useState<{name: string, neighborhood: string, points: number} | null>(null)
 
   // Remplacer par l'ID utilisateur réel si besoin
   const user_id = "demo-user-id"
+
+  useEffect(() => {
+    if (activeTab === "profil" && !userData) {
+      getUserData(user_id).then(setUserData).catch(err => console.error(err))
+    }
+  }, [activeTab, userData, user_id])
 
   async function handleReport(e: React.FormEvent) {
     e.preventDefault()
@@ -96,11 +102,16 @@ export default function DashboardPage() {
             <User className="w-7 h-7 text-[#0a4d75]" />
           </div>
           <div className="flex-1">
-            <p className="text-white font-semibold text-base">Bonjour, Matar Mbow</p>
+            <p className="text-white font-semibold text-base">{userData?.name || "Utilisateur"}</p>
             <div className="flex items-center gap-1 text-white/80 text-sm">
               <MapPin className="w-3 h-3 text-red-400" />
-              <span>Tivaouane · Région de Thiès</span>
+              <span>{userData?.neighborhood || "Tivaouane"} · Région de Thiès</span>
             </div>
+            {activeTab === "profil" && userData && (
+              <div className="text-white/80 text-sm mt-1">
+                Points civiques: {userData.points}
+              </div>
+            )}
           </div>
           <div className="bg-[#2ecc71] text-white text-xs font-medium px-3 py-1 rounded-full flex items-center gap-1">
             <CheckCircle className="w-3 h-3" />
@@ -243,10 +254,23 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {activeTab !== "dashboard" && activeTab !== "signalements" && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-gray-500">Contenu en développement</p>
+        {activeTab === "profil" && (
+          <div className="flex flex-col gap-4">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">Profil utilisateur</h2>
+            {userData ? (
+              <div className="bg-white rounded-xl p-4 shadow">
+                <p><strong>Nom:</strong> {userData.name}</p>
+                <p><strong>Quartier:</strong> {userData.neighborhood}</p>
+                <p><strong>Points civiques:</strong> {userData.points}</p>
+              </div>
+            ) : (
+              <p>Chargement...</p>
+            )}
           </div>
+        )}
+
+        {activeTab === "senbot" && (
+          <SenBotComponent />
         )}
       </main>
 
@@ -286,6 +310,70 @@ export default function DashboardPage() {
           />
         </div>
       </nav>
+    </div>
+  )
+}
+
+function SenBotComponent() {
+  const [question, setQuestion] = useState("")
+  const [response, setResponse] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [history, setHistory] = useState<{question: string, response: string}[]>([])
+
+  const user_id = "demo-user-id"
+
+  async function askSenBot() {
+    if (!question.trim()) return
+    setLoading(true)
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+      const result = await model.generateContent(question)
+      const aiResponse = result.response.text()
+      setResponse(aiResponse)
+      setHistory(prev => [...prev, { question, response: aiResponse }])
+      await saveSenBotChat({ user_id, question, response: aiResponse })
+      setQuestion("")
+    } catch (err: any) {
+      toast({ title: "Erreur", description: err.message, variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">SenBot IA</h2>
+      <div className="flex-1 overflow-y-auto mb-4 max-h-96">
+        {history.map((chat, index) => (
+          <div key={index} className="mb-4">
+            <div className="bg-blue-100 p-3 rounded-lg mb-2">
+              <p className="font-semibold">Vous:</p>
+              <p>{chat.question}</p>
+            </div>
+            <div className="bg-green-100 p-3 rounded-lg">
+              <p className="font-semibold">SenBot:</p>
+              <p>{chat.response}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={question}
+          onChange={e => setQuestion(e.target.value)}
+          placeholder="Posez votre question..."
+          className="flex-1 border rounded px-3 py-2"
+          onKeyPress={e => e.key === 'Enter' && askSenBot()}
+        />
+        <button
+          onClick={askSenBot}
+          disabled={loading}
+          className="bg-blue-500 text-white px-4 py-2 rounded disabled:opacity-50"
+        >
+          {loading ? "..." : "Envoyer"}
+        </button>
+      </div>
     </div>
   )
 }
