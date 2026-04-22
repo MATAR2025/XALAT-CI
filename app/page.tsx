@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
+import { uploadReportImage, insertReport } from "../lib/report"
+import { toast } from "../hooks/use-toast"
 import {
   Bell,
   User,
@@ -28,6 +30,42 @@ import {
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("dashboard")
+  const [category, setCategory] = useState("")
+  const [file, setFile] = useState<File | null>(null)
+  const [loading, setLoading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Remplacer par l'ID utilisateur réel si besoin
+  const user_id = "demo-user-id"
+
+  async function handleReport(e: React.FormEvent) {
+    e.preventDefault()
+    if (!file || !category) {
+      toast({ title: "Erreur", description: "Veuillez choisir une catégorie et prendre une photo.", variant: "destructive" })
+      return
+    }
+    setLoading(true)
+    try {
+      // Géolocalisation navigateur
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true })
+      })
+      const lat = position.coords.latitude
+      const lng = position.coords.longitude
+      // Upload image
+      const image_url = await uploadReportImage(file, user_id)
+      // Insert report
+      await insertReport({ category, lat, lng, user_id, image_url })
+      toast({ title: "Signalement envoyé", description: "Merci pour votre contribution !" })
+      setCategory("")
+      setFile(null)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    } catch (err: any) {
+      toast({ title: "Erreur", description: err.message || "Une erreur est survenue.", variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col max-w-md mx-auto">
@@ -89,13 +127,40 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Main action button */}
-        <button className="w-full bg-[#006d44] hover:bg-[#005a38] text-white rounded-xl py-4 flex items-center justify-center gap-3 font-semibold text-base mb-6 transition-colors">
-          <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-            <Camera className="w-5 h-5" />
-          </div>
-          <span>SIGNALER UN PROBLÈME</span>
-        </button>
+        {/* Formulaire de signalement */}
+        <form onSubmit={handleReport} className="w-full bg-white rounded-xl p-4 mb-6 flex flex-col gap-4 shadow">
+          <label className="font-medium text-gray-700">Catégorie</label>
+          <select
+            className="border rounded px-3 py-2"
+            value={category}
+            onChange={e => setCategory(e.target.value)}
+            required
+          >
+            <option value="">Choisir une catégorie</option>
+            <option value="Voirie">Voirie</option>
+            <option value="Eau">Eau</option>
+            <option value="Électricité">Électricité</option>
+            <option value="Déchets">Déchets</option>
+            <option value="Autre">Autre</option>
+          </select>
+          <label className="font-medium text-gray-700">Photo (caméra)</label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="border rounded px-3 py-2"
+            onChange={e => setFile(e.target.files?.[0] || null)}
+            required
+          />
+          <button
+            type="submit"
+            className="w-full bg-[#006d44] hover:bg-[#005a38] text-white rounded-xl py-3 flex items-center justify-center gap-3 font-semibold text-base transition-colors disabled:opacity-60"
+            disabled={loading}
+          >
+            {loading ? "Envoi en cours..." : (<><Camera className="w-5 h-5" /> <span>SIGNALER UN PROBLÈME</span></>)}
+          </button>
+        </form>
 
         {/* Services rapides */}
         <div className="mb-6">
